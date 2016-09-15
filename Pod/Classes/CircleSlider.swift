@@ -1,579 +1,228 @@
-import UIKit
+//
+//  CircleSlider.swift
+//  CircleSlider
+//
+//  Created by shushutochako on 11/17/15.
+//  Copyright © 2015 shushutochako. All rights reserved.
+//
 
-public enum JHSpinnerOverlay {
-    case fullScreen, circular, square, roundedSquare, custom(CGSize, CGFloat)
+public enum CircleSliderOption {
+  case startAngle(Double)
+  case barColor(UIColor)
+  case trackingColor(UIColor)
+  case thumbColor(UIColor)
+  case thumbImage(UIImage)
+  case barWidth(CGFloat)
+  case thumbWidth(CGFloat)
+  case maxValue(Float)
+  case minValue(Float)
+  case sliderEnabled(Bool)
+  case viewInset(CGFloat)
+  case minMaxSwitchTreshold(Float)
 }
 
-open class JHSpinnerView: UIView {
-    
-    @IBOutlet weak var spinnerContainerView: UIView!
-    
-    @IBOutlet weak var dot1:UIView!
-    @IBOutlet weak var dot1Width:NSLayoutConstraint!
-    @IBOutlet weak var dot1Height:NSLayoutConstraint!
-    @IBOutlet weak var dot1CenterX:NSLayoutConstraint!
-    @IBOutlet weak var dot1CenterY:NSLayoutConstraint!
-    
-    @IBOutlet weak var dot2:UIView!
-    @IBOutlet weak var dot2Width:NSLayoutConstraint!
-    @IBOutlet weak var dot2Height:NSLayoutConstraint!
-    @IBOutlet weak var dot2CenterX:NSLayoutConstraint!
-    @IBOutlet weak var dot2CenterY:NSLayoutConstraint!
-    
-    @IBOutlet weak var dot3:UIView!
-    @IBOutlet weak var dot3Width:NSLayoutConstraint!
-    @IBOutlet weak var dot3Height:NSLayoutConstraint!
-    @IBOutlet weak var dot3CenterX:NSLayoutConstraint!
-    @IBOutlet weak var dot3CenterY:NSLayoutConstraint!
-    
-    @IBOutlet weak var messageLabel:UILabel!
-    @IBOutlet weak var messageTop:NSLayoutConstraint!
-    @IBOutlet weak var messageWidth:NSLayoutConstraint!
-    @IBOutlet weak var messageHeight:NSLayoutConstraint!
-    
-    //private var nibView:JHSpinnerView!
-    fileprivate var overlay: JHSpinnerOverlay = .fullScreen
-    fileprivate var overlayView = UIView()
-    fileprivate var animating = false
-    fileprivate var animationSpeed = 0.14
-    fileprivate var maxDot = CGFloat(26)
-    fileprivate var minDot = CGFloat(6)
-    fileprivate var margin = CGFloat(4)
-    fileprivate var circle: CAShapeLayer?
-    open var progress = CGFloat(0) {
-        didSet{
-            if let circle = circle, let color = dot1.backgroundColor {
-                circle.removeFromSuperlayer()
-                self.addCircleBorder(color, progress: progress)
-            }
-        }
+open class CircleSlider: UIControl {
+  fileprivate let minThumbTouchAreaWidth:CGFloat = 44
+  fileprivate var latestDegree: Double = 0
+  fileprivate var _value: Float = 0
+  open var value: Float {
+    get {
+      return self._value
     }
-    
-    open class func showOnView(_ view:UIView, spinnerColor:UIColor? = nil, overlay:JHSpinnerOverlay = .fullScreen, overlayColor:UIColor? = nil, fullCycleTime:Double = 4.0, text:String? = nil, textColor:UIColor? = nil) -> JHSpinnerView {
+    set {
+      var value = newValue
+      let significantChange = (self.maxValue - self.minValue) * (1.0 - self.minMaxSwitchTreshold)
+      let isSignificantChangeOccured = fabs(newValue - self._value) > significantChange
         
-        let defaultWhite = UIColor(red: 250.0/255.0, green: 250.0/255.0, blue: 250.0/255.0, alpha: 1.0)
-        let defaultBlack = UIColor(red: 40.0/255.0, green: 40.0/255.0, blue: 40.0/255.0, alpha: 1.0)
-        
-        var mySpinnerColor = defaultWhite
-        if let color = spinnerColor {
-            mySpinnerColor = color
-        }else {
-            if let bgColor = view.backgroundColor {
-                if bgColor.isLight() {
-                    mySpinnerColor = defaultBlack
-                }else {
-                    mySpinnerColor = defaultWhite
-                }
-            }
+      if (isSignificantChangeOccured) {
+        if (self._value < newValue) {
+          value = self.minValue
+        } else {
+          value = self.maxValue
         }
+      } else {
+        value = newValue
+      }
         
-        var myOverlayColor = defaultBlack
+      self._value = value
+      self.sendActions(for: .valueChanged)
+      var degree = Math.degreeFromValue(self.startAngle, value: self.value, maxValue: self.maxValue, minValue: self.minValue)
         
-        if let overlayColor = overlayColor {
-            myOverlayColor = overlayColor
-        }else {
-            if let bgColor = view.backgroundColor {
-                if bgColor.isLight() {
-                    myOverlayColor = defaultWhite.withAlphaComponent(0.5)
-                }else {
-                    myOverlayColor = defaultBlack.withAlphaComponent(0.5)
-                }
-            }
-        }
+      // fix rendering issue near max value
+      // substract 1/100 of one degree from the current degree to fix a very little overflow
+      // which otherwise cause to display a layer as it is on a min value
+      if (self._value == self.maxValue) {
+         degree = degree - degree / (360 * 100)
+      }
         
-        let spinner = JHSpinnerView.instanceFromNib()
-        spinner.frame = view.bounds
-        spinner.overlay = overlay
-        spinner.animationSpeed = fullCycleTime/28.34 //MAGIC NUMBER
-        spinner.dot1.backgroundColor = mySpinnerColor
-        spinner.dot2.backgroundColor = mySpinnerColor
-        spinner.dot3.backgroundColor = mySpinnerColor
-        
-        spinner.overlayView.backgroundColor = myOverlayColor
-        
-        spinner.layoutOverlayView()
-        
-        spinner.addSubview(spinner.overlayView)
-        spinner.bringSubview(toFront: spinner.spinnerContainerView)
-        
-        if let text = text {
-            spinner.messageLabel.text = text
-            
-            if let textColor = textColor {
-                spinner.messageLabel.textColor = textColor
-            }else {
-                if myOverlayColor.isLight() {
-                    spinner.messageLabel.textColor = defaultBlack
-                }else {
-                    spinner.messageLabel.textColor = defaultWhite
-                }
-            }
-            spinner.messageWidth.constant = spinner.overlayView.frame.width - 16
-            spinner.messageHeight.constant = (spinner.overlayView.frame.height/2) - (spinner.spinnerContainerView.frame.height/2) - spinner.messageTop.constant
-            spinner.messageLabel.isHidden = false
-            spinner.bringSubview(toFront: spinner.messageLabel)
-            spinner.layoutIfNeeded()
-        }
-        
-        view.addSubview(spinner)
-        
-        return spinner
+      self.layout(degree)
     }
-    
-    open class func showOnView(_ view:UIView, spinnerColor:UIColor? = nil, overlay:JHSpinnerOverlay = .fullScreen, overlayColor:UIColor? = nil, fullCycleTime:Double = 4.0, attributedText:NSAttributedString) -> JHSpinnerView {
-        
-        let defaultWhite = UIColor(red: 250.0/255.0, green: 250.0/255.0, blue: 250.0/255.0, alpha: 1.0)
-        let defaultBlack = UIColor(red: 40.0/255.0, green: 40.0/255.0, blue: 40.0/255.0, alpha: 1.0)
-        
-        var mySpinnerColor = defaultWhite
-        if let color = spinnerColor {
-            mySpinnerColor = color
-        }else {
-            if let bgColor = view.backgroundColor {
-                if bgColor.isLight() {
-                    mySpinnerColor = defaultBlack
-                }else {
-                    mySpinnerColor = defaultWhite
-                }
-            }
+  }
+  fileprivate var trackLayer: TrackLayer! {
+    didSet {
+      self.layer.addSublayer(self.trackLayer)
+    }
+  }
+  fileprivate var thumbView: UIView! {
+    didSet {
+      if self.sliderEnabled {
+        self.thumbView.backgroundColor = self.thumbColor
+        self.thumbView.center = self.thumbCenter(self.startAngle)
+        self.thumbView.layer.cornerRadius = self.thumbView!.bounds.size.width * 0.5
+        self.addSubview(self.thumbView)
+        if let thumbImage = self.thumbImage {
+          let thumbImageView = UIImageView(frame: self.thumbView.bounds)
+          thumbImageView.image = thumbImage
+          self.thumbView.addSubview(thumbImageView)
+          self.thumbView.backgroundColor = UIColor.clear
         }
-        
-        var myOverlayColor = defaultBlack
-        
-        if let overlayColor = overlayColor {
-            myOverlayColor = overlayColor
-        }else {
-            if let bgColor = view.backgroundColor {
-                if bgColor.isLight() {
-                    myOverlayColor = defaultWhite.withAlphaComponent(0.5)
-                }else {
-                    myOverlayColor = defaultBlack.withAlphaComponent(0.5)
-                }
-            }
-        }
-        
-        let spinner = JHSpinnerView.instanceFromNib()
-        spinner.frame = view.bounds
-        spinner.overlay = overlay
-        spinner.animationSpeed = fullCycleTime/28.34 //MAGIC NUMBER
-        spinner.dot1.backgroundColor = mySpinnerColor
-        spinner.dot2.backgroundColor = mySpinnerColor
-        spinner.dot3.backgroundColor = mySpinnerColor
-        
-        spinner.overlayView.backgroundColor = myOverlayColor
-        
-        spinner.layoutOverlayView()
-        
-        spinner.addSubview(spinner.overlayView)
-        spinner.bringSubview(toFront: spinner.spinnerContainerView)
-        
-        spinner.messageLabel.attributedText = attributedText
-        spinner.messageWidth.constant = spinner.overlayView.frame.width - 16
-        spinner.messageHeight.constant = (spinner.overlayView.frame.height/2) - (spinner.spinnerContainerView.frame.height/2) - spinner.messageTop.constant
-        spinner.messageLabel.isHidden = false
-        spinner.bringSubview(toFront: spinner.messageLabel)
-        spinner.layoutIfNeeded()
-        
-        view.addSubview(spinner)
-        
-        return spinner
+      } else {
+        self.thumbView.isHidden = true
+      }
     }
-    
-    open class func showDeterminiteSpinnerOnView(_ view:UIView, spinnerColor:UIColor? = nil, backgroundColor:UIColor? = nil, fullCycleTime:Double = 4.0, initialProgress:CGFloat = 0.0) -> JHSpinnerView {
-        
-        let defaultWhite = UIColor(red: 250.0/255.0, green: 250.0/255.0, blue: 250.0/255.0, alpha: 1.0)
-        let defaultBlack = UIColor(red: 40.0/255.0, green: 40.0/255.0, blue: 40.0/255.0, alpha: 1.0)
-        
-        var mySpinnerColor = defaultWhite
-        if let color = spinnerColor {
-            mySpinnerColor = color
-        }else {
-            if let bgColor = view.backgroundColor {
-                if bgColor.isLight() {
-                    mySpinnerColor = defaultBlack
-                }else {
-                    mySpinnerColor = defaultWhite
-                }
-            }
-        }
-        
-        var myOverlayColor = defaultBlack
-        
-        if let overlayColor = backgroundColor {
-            myOverlayColor = overlayColor
-        }else {
-            if let bgColor = view.backgroundColor {
-                if bgColor.isLight() {
-                    myOverlayColor = defaultWhite.withAlphaComponent(0.5)
-                }else {
-                    myOverlayColor = defaultBlack.withAlphaComponent(0.5)
-                }
-            }
-        }
-        
-        let spinner = JHSpinnerView.instanceFromNib()
-        spinner.frame = view.bounds
-        spinner.animationSpeed = fullCycleTime/28.34 //MAGIC NUMBER
-        spinner.dot1.backgroundColor = mySpinnerColor
-        spinner.dot2.backgroundColor = mySpinnerColor
-        spinner.dot3.backgroundColor = mySpinnerColor
-        
-        spinner.overlayView.backgroundColor = myOverlayColor
-        
-        let size = 75
-        
-        spinner.overlayView.frame = CGRect(x: Int(spinner.center.x) - (size/2), y: Int(spinner.center.y) - (size/2), width: size, height: size)
-        spinner.overlayView.layer.cornerRadius = CGFloat(size/2)
-        
-        spinner.addSubview(spinner.overlayView)
-        spinner.bringSubview(toFront: spinner.spinnerContainerView)
-        
-        spinner.messageLabel.isHidden = true
-        
-        spinner.addCircleBorder(mySpinnerColor, progress: 1.0)
-        
-        view.addSubview(spinner)
-        
-        return spinner
+  }
+  // Options
+  fileprivate var startAngle: Double         = -90
+  fileprivate var barColor                   = UIColor.lightGray
+  fileprivate var trackingColor              = UIColor.blue
+  fileprivate var thumbColor                 = UIColor.black
+  fileprivate var barWidth: CGFloat          = 20
+  fileprivate var maxValue: Float            = 100
+  fileprivate var minValue: Float            = 0
+  fileprivate var sliderEnabled              = true
+  fileprivate var viewInset:CGFloat          = 20
+  fileprivate var minMaxSwitchTreshold:Float = 0.0 // from 0.0 to 1.0
+  fileprivate var thumbImage: UIImage?
+  fileprivate var _thumbWidth: CGFloat?
+  fileprivate var thumbWidth: CGFloat {
+    get {
+      if let retValue = self._thumbWidth {
+        return retValue
+      }
+      return self.barWidth * 1.5
     }
-    
-    open func addCircleBorder(_ color:UIColor, progress:CGFloat) {
-        let radius = self.overlayView.frame.width/2
-        // Create the circle layer
-        self.circle = CAShapeLayer()
-        let borderWidth = CGFloat(2)
-        
-        if let circle = self.circle {
-            
-            // Set the center of the circle to be the center of the view
-            let center = CGPoint(x: self.overlayView.frame.midX - radius, y: self.overlayView.frame.midY - radius)
-            circle.position = CGPoint(x: (self.overlayView.frame.width - borderWidth)/2, y: (self.overlayView.frame.height - borderWidth)/2)
-            
-            func rad(_ degrees:CGFloat) -> CGFloat {
-                return (degrees * CGFloat(M_PI))/180
-            }
-            
-            let clockwise: Bool = true
-            
-            // `clockwise` tells the circle whether to animate in a clockwise or anti clockwise direction
-            circle.path = UIBezierPath(arcCenter: center, radius: radius, startAngle: -rad(90), endAngle: rad(360-90), clockwise: clockwise).cgPath
-            
-            // Configure the circle
-            circle.fillColor = UIColor.clear.cgColor
-            circle.strokeColor = color.cgColor
-            circle.lineWidth = borderWidth
-            
-            // When it gets to the end of its animation, leave it at 100% stroke filled
-            circle.strokeEnd = progress
-            
-            // Add the circle to the parent layer
-            self.layer.addSublayer(circle)
-            
-        }
+    set {
+      self._thumbWidth = newValue
     }
-    
-    fileprivate func layoutOverlayView() {
-        let size = 120
-        switch overlay {
-        case .fullScreen:
-            
-            overlayView.frame = bounds
-            
-        case .square:
-            overlayView.frame = CGRect(x: Int(center.x) - (size/2), y: Int(center.y) - (size/2), width: size, height: size)
-        case .roundedSquare:
-            overlayView.frame = CGRect(x: Int(center.x) - (size/2), y: Int(center.y) - (size/2), width: size, height: size)
-            overlayView.layer.cornerRadius = 8.0
-        case .circular:
-            overlayView.frame = CGRect(x: Int(center.x) - (size/2), y: Int(center.y) - (size/2), width: size, height: size)
-            overlayView.layer.cornerRadius = CGFloat(size/2)
-        case .custom(let size, let cornerRadius):
-            overlayView.frame = CGRect(x: Int(center.x) - Int(size.width/2), y: Int(center.y) - Int(size.height/2), width: Int(size.width), height: Int(size.height))
-            if cornerRadius > 0 {
-                overlayView.layer.cornerRadius = cornerRadius
-            }
-        }
+  }
+  
+  override open func awakeFromNib() {
+    super.awakeFromNib()
+    self.backgroundColor = UIColor.clear
+  }
+  
+  public init(frame: CGRect, options: [CircleSliderOption]?) {
+    super.init(frame: frame)
+    if let options = options {
+      self.build(options)
     }
-    
-    open class func instanceFromNib() -> JHSpinnerView {
-        let bundle = Bundle(for:JHSpinnerView.self)
-        return UINib(nibName: "JHSpinnerView", bundle: bundle).instantiate(withOwner: nil, options: nil)[0] as! JHSpinnerView
-    }
-    
-    required public init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder)
-    }
-    
-    override open func awakeFromNib() {
-        super.awakeFromNib()
-        dot1.layer.cornerRadius = minDot/2
-        dot2.layer.cornerRadius = minDot/2
-        dot3.layer.cornerRadius = minDot/2
-        
-    }
-    
-    open override func layoutSubviews() {
-        super.layoutSubviews()
-        
-        layoutOverlayView()
-        
-        if !animating {
-            animate()
-            
-            animating = true
-        }
-    }
-    
-    open func dismiss() {
-        UIView.animate(withDuration: self.animationSpeed, delay: 0.0, options: UIViewAnimationOptions(), animations: { () -> Void in
-            self.alpha = 0.0
-            }) { (success) -> Void in
-                self.removeFromSuperview()
-        }
-    }
-    
-    open func animate() {
-        if dot1Height != nil {
-            animateHeightLeftToRight(dot1Height)
-        }
-    }
-    
-    
-    open func animateHeightLeftToRight(_ constraint:NSLayoutConstraint, max:Bool = true) {
-        if self.superview != nil {
-            UIView.animate(withDuration: animationSpeed, delay: 0.0, options: UIViewAnimationOptions(), animations: { () -> Void in
-                
-                if max {
-                    constraint.constant = self.maxDot
-                }else {
-                    constraint.constant = self.minDot
-                }
-                self.layoutIfNeeded()
-                
-                }) { (success) -> Void in
-                    if max {
-                        if constraint == self.dot1Height {
-                            self.animateHeightLeftToRight(self.dot2Height)
-                        }else if constraint == self.dot2Height {
-                            self.animateHeightLeftToRight(self.dot3Height)
-                        }else if constraint == self.dot3Height {
-                            self.animateHeightLeftToRight(self.dot1Height, max:false)
-                        }
-                    }else {
-                        if constraint == self.dot1Height {
-                            self.animateHeightLeftToRight(self.dot2Height, max:false)
-                        }else if constraint == self.dot2Height {
-                            self.animateHeightLeftToRight(self.dot3Height, max:false)
-                        }else if constraint == self.dot3Height {
-                            self.positionTopToBottom(self.dot1CenterX)
-                        }
-                    }
-            }
-        }
-    }
-    
-    open func positionTopToBottom(_ constraint:NSLayoutConstraint) {
-        if self.superview != nil {
-            UIView.animate(withDuration: animationSpeed, delay: 0.0, options: UIViewAnimationOptions(), animations: { () -> Void in
-                
-                if constraint == self.dot1CenterX {
-                    self.dot1CenterX.constant = 0
-                    self.dot1CenterY.constant = -self.minDot - self.margin
-                    self.dot3CenterX.constant = 0
-                    self.dot3CenterY.constant = self.minDot + self.margin
-                }
-                
-                self.layoutIfNeeded()
-                
-                }) { (success) -> Void in
-                    
-                    self.animateWidthTopToBottom(self.dot1Width)
-                    
-                    
-            }
-        }
-    }
-    
-    open func animateWidthTopToBottom(_ constraint:NSLayoutConstraint, max:Bool = true) {
-        if self.superview != nil {
-            UIView.animate(withDuration: animationSpeed, delay: 0.0, options: UIViewAnimationOptions(), animations: { () -> Void in
-                
-                if max {
-                    constraint.constant = self.maxDot
-                }else {
-                    constraint.constant = self.minDot
-                }
-                self.layoutIfNeeded()
-                
-                }) { (success) -> Void in
-                    if max {
-                        if constraint == self.dot1Width {
-                            self.animateWidthTopToBottom(self.dot2Width)
-                        }else if constraint == self.dot2Width {
-                            self.animateWidthTopToBottom(self.dot3Width)
-                        }else if constraint == self.dot3Width {
-                            self.animateWidthTopToBottom(self.dot1Width, max:false)
-                        }
-                    }else {
-                        if constraint == self.dot1Width {
-                            self.animateWidthTopToBottom(self.dot2Width, max:false)
-                        }else if constraint == self.dot2Width {
-                            self.animateWidthTopToBottom(self.dot3Width, max:false)
-                        }else if constraint == self.dot3Width {
-                            self.positionRightToLeft(self.dot1CenterX)
-                        }
-                    }
-            }
-        }
-    }
-    
-    open func positionRightToLeft(_ constraint:NSLayoutConstraint) {
-        if self.superview != nil {
-            UIView.animate(withDuration: animationSpeed, delay: 0.0, options: UIViewAnimationOptions(), animations: { () -> Void in
-                
-                if constraint == self.dot1CenterX {
-                    self.dot1CenterX.constant = self.minDot + self.margin
-                    self.dot1CenterY.constant = 0
-                    self.dot3CenterX.constant = -self.minDot - self.margin
-                    self.dot3CenterY.constant = 0
-                }
-                
-                self.layoutIfNeeded()
-                
-                }) { (success) -> Void in
-                    
-                    
-                    self.animateHeightRightToLeft(self.dot1Height)
-                    
-            }
-        }
-    }
-    
-    open func animateHeightRightToLeft(_ constraint:NSLayoutConstraint, max:Bool = true) {
-        if self.superview != nil {
-            UIView.animate(withDuration: animationSpeed, delay: 0.0, options: UIViewAnimationOptions(), animations: { () -> Void in
-                
-                if max {
-                    constraint.constant = self.maxDot
-                }else {
-                    constraint.constant = self.minDot
-                }
-                self.layoutIfNeeded()
-                
-                }) { (success) -> Void in
-                    if max {
-                        if constraint == self.dot1Height {
-                            self.animateHeightRightToLeft(self.dot2Height)
-                        }else if constraint == self.dot2Height {
-                            self.animateHeightRightToLeft(self.dot3Height)
-                        }else if constraint == self.dot3Height {
-                            self.animateHeightRightToLeft(self.dot1Height, max:false)
-                        }
-                    }else {
-                        if constraint == self.dot1Height {
-                            self.animateHeightRightToLeft(self.dot2Height, max:false)
-                        }else if constraint == self.dot2Height {
-                            self.animateHeightRightToLeft(self.dot3Height, max:false)
-                        }else if constraint == self.dot3Height {
-                            self.positionBottomToTop(self.dot1CenterX)
-                        }
-                    }
-            }
-        }
-    }
-    
-    open func positionBottomToTop(_ constraint:NSLayoutConstraint) {
-        if self.superview != nil {
-            UIView.animate(withDuration: animationSpeed, delay: 0.0, options: UIViewAnimationOptions(), animations: { () -> Void in
-                
-                if constraint == self.dot1CenterX {
-                    self.dot1CenterX.constant = 0
-                    self.dot1CenterY.constant = self.minDot + self.margin
-                    self.dot3CenterY.constant = -self.minDot - self.margin
-                    self.dot3CenterX.constant = 0
-                }
-                
-                self.layoutIfNeeded()
-                
-                }) { (success) -> Void in
-                    
-                    self.animateWidthBottomToTop(self.dot1Width)
-                    
-            }
-        }
-    }
-    
-    open func animateWidthBottomToTop(_ constraint:NSLayoutConstraint, max:Bool = true) {
-        if self.superview != nil {
-            UIView.animate(withDuration: animationSpeed, delay: 0.0, options: UIViewAnimationOptions(), animations: { () -> Void in
-                
-                if max {
-                    constraint.constant = self.maxDot
-                }else {
-                    constraint.constant = self.minDot
-                }
-                self.layoutIfNeeded()
-                
-                }) { (success) -> Void in
-                    if max {
-                        if constraint == self.dot1Width {
-                            self.animateWidthBottomToTop(self.dot2Width)
-                        }else if constraint == self.dot2Width {
-                            self.animateWidthBottomToTop(self.dot3Width)
-                        }else if constraint == self.dot3Width {
-                            self.animateWidthBottomToTop(self.dot1Width, max:false)
-                        }
-                    }else {
-                        if constraint == self.dot1Width {
-                            self.animateWidthBottomToTop(self.dot2Width, max:false)
-                        }else if constraint == self.dot2Width {
-                            self.animateWidthBottomToTop(self.dot3Width, max:false)
-                        }else if constraint == self.dot3Width {
-                            self.positionLeftToRight(self.dot1CenterX)
-                        }
-                    }
-            }
-        }
-    }
-    
-    open func positionLeftToRight(_ constraint:NSLayoutConstraint) {
-        if self.superview != nil {
-            UIView.animate(withDuration: animationSpeed, delay: 0.0, options: UIViewAnimationOptions(), animations: { () -> Void in
-                
-                if constraint == self.dot1CenterX {
-                    self.dot1CenterX.constant = -self.minDot - self.margin
-                    self.dot1CenterY.constant = 0
-                    self.dot3CenterX.constant = self.minDot + self.margin
-                    self.dot3CenterY.constant = 0
-                }
-                
-                self.layoutIfNeeded()
-                
-                }) { (success) -> Void in
-                    
-                    
-                    self.animateHeightLeftToRight(self.dot1Height)
-            }
-        }
-    }
-    
-}
+  }
 
-extension UIColor {
-    func isLight() -> Bool
-    {
-        return false
-        /*let components = self.cgColor.components
-        let comp0 = (components?[0])! * 299
-        let comp1 = (components?[1])! * 587
-        let comp2 = (components?[2])! * 114
-        let brightness = (comp0 + comp1 + comp2) / 1000
-        
-        if brightness < 0.5 {
-            return false
-        }
-        else {
-            return true
-        }*/
+  required public init?(coder aDecoder: NSCoder) {
+      fatalError("init(coder:) has not been implemented")
+  }
+    
+  override open func layoutSublayers(of: CALayer) {
+    if self.trackLayer == nil {
+      self.trackLayer = TrackLayer(bounds: self.bounds.insetBy(dx: viewInset, dy: viewInset), setting: self.createLayerSetting())
     }
+    if self.thumbView == nil {
+      self.thumbView = UIView(frame: CGRect(x: 0, y: 0, width: self.thumbWidth, height: self.thumbWidth))
+    }
+  }
+
+  override open func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    if !self.sliderEnabled {
+      return nil
+    }
+    let rect = self.trackLayer.hollowRect
+    let hollowPath = UIBezierPath(roundedRect: rect, cornerRadius: self.trackLayer.hollowRadius)
+    if !(self.bounds.contains(point) || hollowPath.contains(point)) ||
+       !(self.thumbView.frame.contains(point)) {
+      return nil
+    }
+    return self
+  }
+  
+  override open func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+    let degree = Math.pointPairToBearingDegrees(self.center, endPoint: touch.location(in: self))
+    self.latestDegree = degree
+    self.layout(degree)
+    let value = Float(Math.adjustValue(self.startAngle, degree: degree, maxValue: self.maxValue, minValue: self.minValue))
+    self.value = value
+    return true
+  }
+  
+  open func changeOptions(_ options: [CircleSliderOption]) {
+    self.build(options)
+    self.redraw()
+  }
+  
+  fileprivate func redraw() {
+    
+    if (self.trackLayer != nil) {
+      self.trackLayer.removeFromSuperlayer()
+    }
+    self.trackLayer = TrackLayer(bounds: self.bounds.insetBy(dx: viewInset, dy: viewInset), setting: self.createLayerSetting())
+    if (self.thumbView != nil) {
+      self.thumbView.removeFromSuperview()
+    }
+    self.thumbView = UIView(frame: CGRect(x: 0, y: 0, width: self.thumbWidth, height: self.thumbWidth))
+    self.layout(self.latestDegree)
+  }
+    
+  fileprivate func build(_ options: [CircleSliderOption]) {
+    for option in options {
+      switch option {
+      case let .startAngle(value):
+        self.startAngle = value
+        self.latestDegree = self.startAngle
+      case let .barColor(value):
+        self.barColor = value
+      case let .trackingColor(value):
+        self.trackingColor = value
+      case let .thumbColor(value):
+        self.thumbColor = value
+      case let .barWidth(value):
+        self.barWidth = value
+      case let .thumbWidth(value):
+        self.thumbWidth = value
+      case let .maxValue(value):
+        self.maxValue = value
+      case let .minValue(value):
+        self.minValue = value
+        self._value = self.minValue
+      case let .sliderEnabled(value):
+        self.sliderEnabled = value
+      case let .viewInset(value):
+        self.viewInset = value
+      case let .minMaxSwitchTreshold(value):
+        self.minMaxSwitchTreshold = value
+      case let .thumbImage(value):
+        self.thumbImage = value
+      }
+    }
+  }
+  
+  fileprivate func layout(_ degree: Double) {
+    if let trackLayer = self.trackLayer, let thumbView = self.thumbView {
+      trackLayer.degree = degree
+      thumbView.center = self.thumbCenter(degree)
+      trackLayer.setNeedsDisplay()
+    }
+  }
+  
+  fileprivate func createLayerSetting() -> TrackLayer.Setting {
+    var setting = TrackLayer.Setting()
+    setting.startAngle    = self.startAngle
+    setting.barColor      = self.barColor
+    setting.trackingColor = self.trackingColor
+    setting.barWidth      = self.barWidth
+    return setting
+  }
+  
+  fileprivate func thumbCenter(_ degree: Double) -> CGPoint {
+    let radius = (self.bounds.insetBy(dx: viewInset, dy: viewInset).width * 0.5) - (self.barWidth * 0.5)
+    return Math.pointFromAngle(self.frame, angle: degree, radius: Double(radius))
+  }
 }
