@@ -19,6 +19,8 @@ public enum CircleSliderOption {
   case sliderEnabled(Bool)
   case viewInset(CGFloat)
   case minMaxSwitchTreshold(Float)
+  case thumbCenterOffset(CGFloat)
+  case hollowRadius(CGFloat)
 }
 
 open class CircleSlider: UIControl {
@@ -105,6 +107,8 @@ open class CircleSlider: UIControl {
       self._thumbWidth = newValue
     }
   }
+  fileprivate var thumbCenterOffset: CGFloat = 0.0
+  fileprivate var hollowRadius: CGFloat?
   
   override open func awakeFromNib() {
     super.awakeFromNib()
@@ -200,6 +204,10 @@ open class CircleSlider: UIControl {
         self.minMaxSwitchTreshold = value
       case let .thumbImage(value):
         self.thumbImage = value
+      case let .thumbCenterOffset(value):
+        self.thumbCenterOffset = value
+	    case let  .hollowRadius(value):
+		    self.hollowRadius = value
       }
     }
   }
@@ -218,11 +226,13 @@ open class CircleSlider: UIControl {
     setting.barColor      = self.barColor
     setting.trackingColor = self.trackingColor
     setting.barWidth      = self.barWidth
+	  setting.hollowRadius  = self.hollowRadius
     return setting
   }
   
   fileprivate func thumbCenter(_ degree: Double) -> CGPoint {
-    let radius = (self.bounds.insetBy(dx: viewInset, dy: viewInset).width * 0.5) - (self.barWidth * 0.5)
-    return Math.pointFromAngle(self.frame, angle: degree, radius: Double(radius))
+    let radius = (self.bounds.insetBy(dx: viewInset, dy: viewInset).width * 0.5) - (self.barWidth * 0.5) + self.thumbCenterOffset
+	  return Math.pointFromAngle(self.frame, angle: degree, radius: Double(radius))
   }
 }
+
