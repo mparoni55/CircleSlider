@@ -14,10 +14,14 @@ internal class TrackLayer: CAShapeLayer {
     var barWidth = CGFloat()
     var barColor = UIColor()
     var trackingColor = UIColor()
+	  var hollowRadius : CGFloat?
   }
   internal var setting = Setting()
   internal var degree: Double = 0
   internal var hollowRadius: CGFloat {
+	  if let hollowRadius = self.setting.hollowRadius{
+		  return hollowRadius
+	  }
     return (self.bounds.width * 0.5) - self.setting.barWidth
   }
   internal var currentCenter: CGPoint {
@@ -30,6 +34,7 @@ internal class TrackLayer: CAShapeLayer {
       width: self.hollowRadius * 2.0,
       height: self.hollowRadius * 2.0)
   }
+  internal var hollowRadiusOffset : CGFloat = 0
   internal init(bounds: CGRect, setting: Setting) {
     super.init()
     self.bounds = bounds
